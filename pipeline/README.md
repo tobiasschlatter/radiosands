@@ -17,7 +17,6 @@ It is best to use a virtualenv using python 2.7.
 You create it like this:
 ```sh
 virtualenv --python=/usr/bin/python2.7 <path/to/new/virtualenv/>
-source path/to/new/virtualenv/bin/activate
 ```
 activate it:
 ```sh
