@@ -9,12 +9,14 @@ from pyAudioAnalysis import audioTrainTest as aT
 from wavio import _wav2array
 import numpy
 import GenreRecognizer
+from BPMExtract import get_file_bpm
 import OSC
+import matplotlib.pyplot as plt
+import numpy as np
 
 from google.cloud import speech
 from google.cloud.speech import enums
 from google.cloud.speech import types
-
 
 
 classes = ['speech', 'music']
@@ -50,14 +52,36 @@ start_time = time.time()
 Fs = wf.getframerate()
 CHUNK = Fs * chunk_size
 
+counter = 0
+
+# For plotting
+x_data = []
+y_bpm_data = []
+y_type_data = []
+y_genre_data = []
+
+plt.ion()
+fig = plt.figure()
+bpm_plt = fig.add_subplot(111)
+bpm_line, = bpm_plt.plot(x_data, y_bpm_data, 'b.')
+bpm_plt.set_xlim(0, 900) #FIXME
+bpm_plt.set_ylim(0, 250) #FIXME
+
 #read next chunk from audio file
 data = wf.readframes(CHUNK)
 
 #iterate over track
 while data != '':
+    print("At second: ")
+    print(counter * chunk_size)
+    counter += 1
+
+    x_data.append(counter * chunk_size)
+
     #stream.write(data)
     array = _wav2array(wf.getnchannels(), wf.getsampwidth(), data)
     array = audioBasicIO.stereo2mono(array)
+
     #extract features
     MidTermFeatures = aF.mtFeatureExtraction(array, Fs, mtWin * Fs, mtStep * Fs, round(Fs * stWin), round(Fs * stStep))
     MidTermFeatures = MidTermFeatures[0]
@@ -84,14 +108,15 @@ while data != '':
     #check what the majority is
     if (len(set(flagsInd)) == 1 and flagsInd[0] == 1):
         print("music")
+        y_type_data.append('music')
 
         #create temp file
         tmp_file = wave.open('tmp_file.wav', 'w')
         tmp_file.setnchannels(1)
-        tmp_file.setframerate(16000)
+        tmp_file.setframerate(wf.getframerate())
         tmp_file.setsampwidth(2)
         tmp_file.writeframesraw(data)
-        tmp_file.close
+        tmp_file.close()
 
         (predictions, duration) = genre_recognizer.recognize("tmp_file.wav")
 
@@ -105,10 +130,20 @@ while data != '':
 
         print(max(set(arr), key=arr.count))
 
+        bpm = get_file_bpm('tmp_file.wav', wf.getframerate())
+        print("{:2f}".format(bpm))
+
+        y_bpm_data.append(bpm)
+        bpm_line.set_ydata(y_bpm_data)
+
     else:
         print("speech:")
         text = ' '.join([str(x) for x in sd.decode_phrase(array)]).decode('utf-8')
         print(text)
+
+        y_bpm_data.append(np.nan)
+
+        bpm_line.set_ydata(y_bpm_data)
 
         #example to send action to OPC receiver
         if 'bundesregierung' in text :
@@ -119,6 +154,12 @@ while data != '':
             oscmsg.append('bundesregierung [POLITIK]')
             c.send(oscmsg)
 
+    # Update the plot
+    bpm_line.set_xdata(x_data)
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+
+
     data = wf.readframes(CHUNK)
 
 print("--- %s seconds ---" % (time.time() - start_time))
@@ -126,3 +167,5 @@ stream.stop_stream()
 stream.close()
 p.terminate()
 
+
+plt.show()
